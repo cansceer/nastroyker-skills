@@ -1,0 +1,20 @@
+{
+  "name": "nastroyker-skills",
+  "interface": {
+    "displayName": "Nastroyker Skills"
+  },
+  "plugins": [
+    {
+      "name": "social-banner-kit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/social-banner-kit"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
