@@ -18,8 +18,17 @@ codex plugin marketplace list
 
 ## Проектные навыки
 
-- [Аудит сайтов StroykerBox](skills/stroykerbox-site-audit/SKILL.md) — проверка сайта в Microsoft Edge, CSS/JS, изображений, ссылок, форм и дизайн-кода без отправки данных.
-- [Подключение и запуск](skills/stroykerbox-site-audit/README.md).
-- [Профиль tsk-market.ru](skills/stroykerbox-site-audit/profiles/tsk-market.json).
+- [Аудит сайтов StroykerBox](.agents/skills/stroykerbox-site-audit/SKILL.md) — обязательный Microsoft Edge, проверка исходников CSS/JS без запуска пользовательского JS, полный порядок проверки при 2550 px, на мобильных ширинах и брейкпоинтах; изображения, ссылки, поля, дизайн-код; два рабочих чеклиста без правок и отправки форм.
+- [Подключение и запуск](.agents/skills/stroykerbox-site-audit/README.md).
+- [Профиль tsk-market.ru](.agents/skills/stroykerbox-site-audit/profiles/tsk-market.json).
 
-Навык StroykerBox подключён к репозиторию через `.agents/skills/stroykerbox-site-audit`.
+## Как открыть навык в Codex Desktop
+
+Навык уже лежит в стандартной папке `.agents/skills/` этого репозитория. Отдельно добавлять его через настройки или каталог плагинов не нужно.
+
+1. Если GitHub Desktop ещё не установлен, скачайте его с [desktop.github.com](https://desktop.github.com/).
+2. В GitHub Desktop выберите **File → Clone repository → URL** и вставьте `https://github.com/cansceer/nastroyker-skills.git`. Выберите папку, куда сохранить репозиторий.
+3. В Codex Desktop откройте **Open project** (или **Open folder**) и выберите созданную папку `nastroyker-skills`.
+4. Начните **новый чат** внутри этого проекта и отправьте: `Используй навык stroykerbox-site-audit. Проведи аудит https://tsk-market.ru/ по профилю tsk-market. Только проверка, без правок и отправки форм.`
+
+Если репозиторий уже клонирован, в GitHub Desktop нажмите **Fetch origin**, затем **Pull origin**, после чего откройте эту папку в Codex и начните новый чат. В текущий уже открытый чат навык задним числом не добавляется.

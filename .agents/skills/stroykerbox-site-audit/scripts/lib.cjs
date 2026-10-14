@@ -94,8 +94,17 @@ async function launchBrowser(engine, profile, playwright) {
   if (proxy) options.proxy = proxy;
   let executable = process.env.AUDIT_EDGE_EXECUTABLE || profile.browserExecutable;
   if (!executable) {
-    const runtime = path.resolve(__dirname, '../../../.edge-runtime.json');
-    if (fs.existsSync(runtime)) executable = JSON.parse(fs.readFileSync(runtime, 'utf8')).executablePath;
+    let directory = __dirname;
+    while (true) {
+      const runtime = path.join(directory, '.edge-runtime.json');
+      if (fs.existsSync(runtime)) {
+        executable = JSON.parse(fs.readFileSync(runtime, 'utf8')).executablePath;
+        break;
+      }
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
   }
   if (executable) {
     if (!fs.existsSync(executable)) throw new Error('Configured Microsoft Edge executable is unavailable. Audit stopped; no fallback browser will run.');
