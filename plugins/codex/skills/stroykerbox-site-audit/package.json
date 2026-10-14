@@ -1,0 +1,10 @@
+{
+  "name": "stroykerbox-site-audit",
+  "version": "1.0.2",
+  "private": true,
+  "description": "Read-only evidence collector for an agent-driven StroykerBox site audit",
+  "engines": {"node": ">=22"},
+  "scripts": {"test": "node --test tests/*.test.cjs", "audit": "node scripts/audit.cjs"},
+  "dependencies": {"playwright": "1.62.1"},
+  "optionalDependencies": {"axe-core": "^4.10.0"}
+}

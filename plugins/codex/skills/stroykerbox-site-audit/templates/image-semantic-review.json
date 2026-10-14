@@ -1,0 +1,6 @@
+{
+  "imageReviews": [],
+  "entryFields": ["page", "viewport", "block", "imageUrl", "depictedContent", "expectedContent", "relevance", "localDuplicateAssessment", "externalUniqueness", "externalSourceEvidence", "crop", "visibleText", "confidence", "evidence", "recommendation"],
+  "externalUniquenessAllowed": ["not_checked", "matches_found_with_evidence", "no_matches_found_not_proof_of_uniqueness"],
+  "note": "Assess each meaningful image in its block. Never infer ownership or external uniqueness from a perceptual hash."
+}

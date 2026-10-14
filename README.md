@@ -16,6 +16,14 @@ codex plugin marketplace list
 
 В ChatGPT desktop после добавления источника перезапусти приложение, открой Plugins Directory и установи **Nastroyker Skills → social-banner-kit**.
 
+Установить аудит StroykerBox в Codex Desktop через окно добавления маркетплейса:
+
+- **Источник:** `https://github.com/cansceer/nastroyker-skills.git`
+- **Git ref:** `main`
+- **Выборочные пути:** `plugins/codex`
+
+После добавления маркетплейса открой каталог плагинов и установи **Nastroyker Skills → stroykerbox-site-audit**. Плагин содержит навык и его скрипты. Альтернативно навык доступен как проектный при открытии самого репозитория в Codex.
+
 ## Проектные навыки
 
 - [Аудит сайтов StroykerBox](.agents/skills/stroykerbox-site-audit/SKILL.md) — обязательный Microsoft Edge, проверка исходников CSS/JS без запуска пользовательского JS, полный порядок проверки при 2550 px, на мобильных ширинах и брейкпоинтах; изображения, ссылки, поля, дизайн-код; два рабочих чеклиста без правок и отправки форм.
