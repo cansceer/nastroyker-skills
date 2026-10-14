@@ -1,10 +1,25 @@
 # nastroyker-skills
-Личное хранилище навыков, плагинов и чатов
 
-## Навыки
+Личное хранилище проектных навыков и плагинов.
 
-- [Аудит сайтов StroykerBox](skills/stroykerbox-site-audit/SKILL.md) — обязательный Microsoft Edge, проверка исходников CSS/JS без запуска пользовательского JS, полный порядок проверки при 2550 px, на мобильных ширинах и брейкпоинтах; изображения, ссылки, поля, дизайн-код; два рабочих чеклиста без правок и отправки форм.
+## Плагины
+
+- [Комплекты баннеров для соцсетей](plugins/social-banner-kit/skills/social-banner-kit/SKILL.md) — Codex-плагин с одним встроенным навыком для создания и адаптации баннеров.
+- Каталог плагинов: [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json).
+
+Добавить репозиторий как marketplace в Codex CLI:
+
+```sh
+codex plugin marketplace add cansceer/nastroyker-skills
+codex plugin marketplace list
+```
+
+В ChatGPT desktop после добавления источника перезапусти приложение, открой Plugins Directory и установи **Nastroyker Skills → social-banner-kit**.
+
+## Проектные навыки
+
+- [Аудит сайтов StroykerBox](skills/stroykerbox-site-audit/SKILL.md) — проверка сайта в Microsoft Edge, CSS/JS, изображений, ссылок, форм и дизайн-кода без отправки данных.
 - [Подключение и запуск](skills/stroykerbox-site-audit/README.md).
 - [Профиль tsk-market.ru](skills/stroykerbox-site-audit/profiles/tsk-market.json).
 
-Подключённый проектный навык: `.agents/skills/stroykerbox-site-audit`.
+Навык StroykerBox подключён к репозиторию через `.agents/skills/stroykerbox-site-audit`.

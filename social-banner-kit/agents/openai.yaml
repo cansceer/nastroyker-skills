@@ -1,4 +1,0 @@
-interface:
-  display_name: "Комплекты баннеров для соцсетей"
-  short_description: "Креативные обложки по сайту с точной адаптацией"
-  default_prompt: "Используй $social-banner-kit: создай 3 комплекта обложек ВК, RUTUBE и YouTube по ссылке на сайт и приложенным материалам."
