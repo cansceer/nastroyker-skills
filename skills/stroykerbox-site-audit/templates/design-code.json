@@ -1,0 +1,9 @@
+{
+  "status": "needs-review",
+  "reference": null,
+  "confirmedRules": {},
+  "inferredRules": {"colors": {}, "fonts": [], "headings": {}, "paragraphVariants": [], "buttonVariants": [], "containers": [], "spacing": [], "motion": []},
+  "cmsSystemVariants": [],
+  "approvedExceptions": [],
+  "evidence": []
+}

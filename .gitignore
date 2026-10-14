@@ -1,0 +1,6 @@
+node_modules/
+audit-results/
+*.zip
+__pycache__/
+.edge-runtime.json
+/project-files/
