@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "verified_on": "2026-10-14",
+  "coordinates": "x,y,width,height; bounds refer to visible content, not transparent padding",
+  "profiles": {
+    "vk": {
+      "canvas": [1920, 768],
+      "minimum_canvas": [960, 384],
+      "safe_rect": [0, 133, 1920, 635],
+      "padding": 32,
+      "exclusions": [{"type": "circle", "cx": 224, "cy": 794, "radius": 172, "clearance": 24}],
+      "formats": ["PNG", "JPEG"],
+      "max_bytes": null,
+      "basis": "User brief and supplied VK desktop/avatar template; 133px is a conservative allowance over the approximately 129px template top crop."
+    },
+    "rutube": {
+      "canvas": [2204, 826],
+      "minimum_canvas": [2204, 826],
+      "safe_rect": [247, 176, 1710, 475],
+      "padding": 32,
+      "exclusions": [],
+      "formats": ["JPEG"],
+      "max_bytes": 10000000,
+      "basis": "User central visible zone 1710x475; official minimum canvas and JPEG limit verified 2026-10-14."
+    },
+    "rutube-864": {
+      "platform": "rutube",
+      "canvas": [2204, 864],
+      "minimum_canvas": [2204, 826],
+      "safe_rect": [247, 195, 1710, 475],
+      "padding": 32,
+      "exclusions": [],
+      "formats": ["JPEG"],
+      "max_bytes": 10000000,
+      "basis": "User-supported alternative canvas; same centered 1710x475 visible area."
+    },
+    "youtube": {
+      "canvas": [2560, 1440],
+      "minimum_canvas": [2048, 1152],
+      "safe_rect": [507, 551, 1546, 338],
+      "desktop_strip": [0, 551, 2560, 338],
+      "padding": 24,
+      "exclusions": [],
+      "formats": ["PNG", "JPEG"],
+      "max_bytes": 6000000,
+      "basis": "User's stricter centered 1546x338 content zone; wider strip is not safe for all devices."
+    }
+  }
+}
