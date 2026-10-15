@@ -1,6 +1,6 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "stroykerbox-site-audit",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Аудит сайтов на StroykerBox в Microsoft Edge: страницы, адаптив, дизайн-система, изображения, ссылки, тексты и поля. Формирует два чеклиста и не вносит изменения на сайт."
 }

@@ -5,8 +5,6 @@
   "cmsDocs": "https://box7.nastroyker.ru/api/v1/docs/",
   "cmsDocsAlternative": "https://stroybaza-samara.ru/api/v1/docs/",
   "cmsDocsStatus": "not-accessible-in-creation-session",
-  "localProject": {"label": "tsk-market project files", "paths": [], "status": "paths-must-be-configured-locally", "expectedFiles": ["custom-colors.css", "custom-script.js", "custom-styles.css", "promo-bolars.html", "promo-contract.html", "promo-delivery.html", "promo-preview.html", "bolars-slider-20kg.webp"]},
-  "sourcePaths": [],
   "designReference": null,
   "viewports": [
     {"name": "desktop", "width": 2550, "height": 1440, "mobile": false},

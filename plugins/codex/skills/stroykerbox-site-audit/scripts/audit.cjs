@@ -6,6 +6,29 @@ const {argumentsOf, writeJson, hash, normalizeUrl, repeatedTemplate, mutationUrl
 const {collectSnapshot} = require('./snapshot.cjs');
 const {candidatesFor, mergeFindings} = require('./findings.cjs');
 
+const SOURCE_FILE_LIMIT = 20_000_000;
+const SOURCE_TOTAL_LIMIT = 200_000_000;
+const MARKUP_FILE_LIMIT = 20_000_000;
+
+function safeResourceUrl(raw) {
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, '[redacted]');
+    return url.href;
+  } catch { return '[invalid-url]'; }
+}
+
+function sourceExtension(contentType, rawUrl) {
+  const mime = (contentType || '').split(';')[0].trim().toLowerCase();
+  const mimeExtensions = {'text/css': 'css', 'application/javascript': 'js', 'text/javascript': 'js', 'application/x-javascript': 'js', 'text/html': 'html', 'application/xhtml+xml': 'html'};
+  if (mimeExtensions[mime]) return mimeExtensions[mime];
+  try {
+    const extension = path.extname(new URL(rawUrl).pathname).slice(1).toLowerCase();
+    return /^[a-z0-9]{1,8}$/.test(extension) ? extension : 'bin';
+  } catch { return 'bin'; }
+}
+
 async function main() {
   const args = argumentsOf(process.argv.slice(2));
   if (!args.profile || !args.output) throw new Error('Usage: node audit.cjs --profile FILE --output DIRECTORY [--browser msedge] [--max-pages N] [--resume]');
@@ -16,10 +39,11 @@ async function main() {
   const maxPages = args['max-pages'] ? Number(args['max-pages']) : Infinity;
   if (!(maxPages > 0)) throw new Error('--max-pages must be positive');
   if (!profile.url || !profile.viewports?.length || profile.viewports[0].width !== 2550 && !profile.testFixture) throw new Error('Profile requires url and first viewport 2550 px');
-  for (const folder of ['snapshots', 'screenshots', 'assets']) fs.mkdirSync(path.join(output, folder), {recursive: true});
+  for (const folder of ['snapshots', 'screenshots', 'assets', 'markup', 'sources']) fs.mkdirSync(path.join(output, folder), {recursive: true});
   const load = (file, fallback) => args.resume && fs.existsSync(path.join(output, file)) ? JSON.parse(fs.readFileSync(path.join(output, file), 'utf8')) : fallback;
   let findings = load('findings.json', []), coverage = load('coverage.json', []);
-  const manifest = load('manifest.json', {version: 1, project: profile.name, url: profile.url, startedAt: new Date().toISOString(), status: 'collecting', browser: {name: 'Microsoft Edge', channel: 'msedge', engine, version: null, fallbackAllowed: false, requestedBrands: ['Microsoft Edge']}, sourceAccess: profile.sourcePaths || [], pages: [], assets: [], blockedRequests: [], limitations: [], discoveryComplete: false, captureComplete: false, auditComplete: false});
+  const manifest = load('manifest.json', {version: 2, project: profile.name, url: profile.url, startedAt: new Date().toISOString(), status: 'collecting', browser: {name: 'Microsoft Edge', channel: 'msedge', engine, version: null, fallbackAllowed: false, requestedBrands: ['Microsoft Edge']}, pages: [], assets: [], sourceFiles: [], blockedRequests: [], limitations: [], discoveryComplete: false, captureComplete: false, auditComplete: false});
+  manifest.sourceFiles ||= [];
   if (manifest.url !== profile.url || manifest.browser.engine !== engine) throw new Error('Resume requires the same URL and browser; use a separate output for each engine');
   manifest.limitations = manifest.limitations.filter(l => !/--max-pages/.test(l.reason));
   const persist = () => {writeJson(path.join(output, 'manifest.json'), manifest); writeJson(path.join(output, 'coverage.json'), coverage); writeJson(path.join(output, 'findings.json'), findings);};
@@ -58,11 +82,54 @@ async function main() {
   for (const seed of profile.seedPaths || []) discover(seed, profile.url, 'explicit-seed', true);
   if (args.resume) for (const p of manifest.pages.filter(p => p.included)) if (!coverage.some(c => c.url === p.url && c.viewport === viewports[0].width && c.capture === 'passed')) if (!queue.includes(p.url)) queue.push(p.url);
   const assetsByUrl = new Map(manifest.assets.map(a => [a.url, a]));
+  const sourceFilesById = new Map(manifest.sourceFiles.map(file => [file.id, file]));
+  let sourceBytesSaved = manifest.sourceFiles.filter(file => file.saved).reduce((sum, file) => sum + (file.bytes || 0), 0);
+  let sourceCaptureChain = Promise.resolve();
+  function queueSource(response, pageUrl, pending, linkedSourceIds) {
+    const request = response.request();
+    const resourceType = request.resourceType();
+    if (!['document', 'stylesheet', 'script'].includes(resourceType)) return;
+    const rawUrl = response.url();
+    const id = hash(`${resourceType}\n${rawUrl}`);
+    let file = sourceFilesById.get(id);
+    if (!file) {
+      file = {id, url: safeResourceUrl(rawUrl), resourceType, contentType: response.headers()['content-type'] || '', status: response.status(), bytes: null, sha256: null, file: null, saved: false, pages: [], error: null};
+      sourceFilesById.set(id, file); manifest.sourceFiles.push(file);
+      sourceCaptureChain = sourceCaptureChain.then(async () => {
+        try {
+          const declaredBytes = Number(response.headers()['content-length']);
+          if (declaredBytes > SOURCE_FILE_LIMIT) {file.saveLimitation = 'File exceeds the 20 MB per-file evidence limit.'; return;}
+          if (sourceBytesSaved >= SOURCE_TOTAL_LIMIT) {file.saveLimitation = 'The 200 MB total source-evidence limit was reached.'; return;}
+          const buffer = await response.body();
+          file.bytes = buffer.length; file.sha256 = hash(buffer);
+          if (buffer.length > SOURCE_FILE_LIMIT) {file.saveLimitation = 'File exceeds the 20 MB per-file evidence limit.'; return;}
+          if (sourceBytesSaved + buffer.length > SOURCE_TOTAL_LIMIT) {file.saveLimitation = 'Saving would exceed the 200 MB total source-evidence limit.'; return;}
+          const extension = sourceExtension(file.contentType, rawUrl);
+          file.file = `sources/${file.sha256}.${extension}`;
+          fs.writeFileSync(path.join(output, file.file), buffer);
+          file.saved = true; sourceBytesSaved += buffer.length;
+        } catch (error) {file.error = safeMessage(error);}
+      });
+      pending.push(sourceCaptureChain);
+    }
+    if (!file.pages.includes(pageUrl)) file.pages.push(pageUrl);
+    if (!linkedSourceIds.includes(id)) linkedSourceIds.push(id);
+  }
+  function saveMarkup(relativePath, value) {
+    const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, 'utf8');
+    const result = {file: relativePath, bytes: buffer.length, saved: false};
+    if (buffer.length > MARKUP_FILE_LIMIT) {result.limitation = 'Markup exceeds the 20 MB per-file evidence limit.'; return result;}
+    try {fs.writeFileSync(path.join(output, relativePath), buffer); result.saved = true;}
+    catch (error) {result.error = safeMessage(error);}
+    return result;
+  }
   const designRows = load('design-code.json', {captures: []}).captures;
   let siteAccessible = true;
   async function capture(url, viewport, discoverLinks) {
     const previous = coverage.find(c => c.url === url && c.viewport === viewport.width && c.engine === engine);
-    if (args.resume && previous?.capture === 'passed') return;
+    const priorPage = pageMap.get(url);
+    const desktopEvidenceSaved = priorPage?.markup?.response?.saved && priorPage?.markup?.rendered?.saved && (priorPage.linkedSourceIds || []).every(id => sourceFilesById.get(id)?.saved);
+    if (args.resume && previous?.capture === 'passed' && (viewport.width !== viewports[0].width || desktopEvidenceSaved)) return;
     const slug = `${hash(url).slice(0, 12)}-${viewport.width}-${engine}`;
     const evidence = `screenshots/${slug}.png`;
     const row = {url, viewport: viewport.width, mode: viewport.name, engine, capture: 'pending', visual: 'not_checked', interaction: 'not_checked', content: 'not_checked', image_semantics: 'not_checked'};
@@ -76,12 +143,13 @@ async function main() {
         try {new PerformanceObserver(list => {for (const e of list.getEntries()) {if (type === 'largest-contentful-paint') window.__siteAuditMetrics.lcpMs = Math.round(e.startTime); if (type === 'layout-shift' && !e.hadRecentInput) window.__siteAuditMetrics.cls += e.value; if (type === 'longtask') window.__siteAuditMetrics.longTasks++;}}).observe({type, buffered: true});} catch {}
       }
     });
-    const page = await context.newPage(), pending = [], imageRows = [], errors = [], failedRequests = [];
+    const page = await context.newPage(), pending = [], imageRows = [], linkedSourceIds = [], errors = [], failedRequests = [];
     page.on('pageerror', error => errors.push(safeMessage(error)));
     page.on('console', msg => {if (msg.type() === 'error') errors.push(safeMessage(msg.text()));});
     page.on('requestfailed', req => failedRequests.push({url: req.url().replace(/\?.*$/, '?[redacted]'), failure: req.failure()?.errorText}));
     page.on('response', response => {
       const type = response.headers()['content-type'] || '';
+      queueSource(response, url, pending, linkedSourceIds);
       if (!type.startsWith('image/')) return;
       pending.push((async () => {
         const imageUrl = response.url();
@@ -101,6 +169,14 @@ async function main() {
     try {
       const response = await page.goto(url, {waitUntil: 'domcontentloaded', timeout: profile.crawl?.navigationTimeoutMs || 30000});
       row.httpStatus = response?.status() || null;
+      const pageRecord = pageMap.get(url);
+      if (viewport.width === viewports[0].width && pageRecord) {
+        const prefix = `markup/${hash(url).slice(0, 16)}`;
+        const markup = {response: null, rendered: null, linkedSourceIds};
+        try {markup.response = response ? saveMarkup(`${prefix}-response.html`, await response.body()) : {saved: false, limitation: 'No main-document response body was available.'};}
+        catch (error) {markup.response = {saved: false, error: safeMessage(error)};}
+        pageRecord.markup = markup;
+      }
       await page.evaluate(() => Promise.race([document.fonts.ready, new Promise(resolve => setTimeout(resolve, 3000))]));
       await page.waitForTimeout(250);
       let scrollComplete = false;
@@ -118,6 +194,11 @@ async function main() {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(150);
       await Promise.allSettled(pending);
+      if (pageRecord) pageRecord.linkedSourceIds = [...new Set([...(pageRecord.linkedSourceIds || []), ...linkedSourceIds])];
+      if (viewport.width === viewports[0].width && pageRecord?.markup) {
+        try {pageRecord.markup.rendered = saveMarkup(`markup/${hash(url).slice(0, 16)}-rendered.html`, await page.evaluate(() => document.documentElement.outerHTML));}
+        catch (error) {pageRecord.markup.rendered = {saved: false, error: safeMessage(error)};}
+      }
       const snapshot = await collectSnapshot(page);
       snapshot.errors = errors; snapshot.failedRequests = failedRequests; snapshot.httpStatus = row.httpStatus; snapshot.scrollComplete = scrollComplete; snapshot.imageResources = imageRows;
       if (axePath) {
@@ -136,7 +217,12 @@ async function main() {
       row.capture = 'blocked'; row.reason = safeMessage(error);
       if (url === profile.url && viewport.width === viewports[0].width) siteAccessible = false;
       console.log(`${viewport.width}px ${url}: blocked`);
-    } finally {await context.close(); persist();}
+    } finally {
+      await Promise.allSettled(pending);
+      const pageRecord = pageMap.get(url);
+      if (pageRecord) pageRecord.linkedSourceIds = [...new Set([...(pageRecord.linkedSourceIds || []), ...linkedSourceIds])];
+      await context.close(); persist();
+    }
     await new Promise(resolve => setTimeout(resolve, profile.crawl?.delayMs ?? 400));
   }
   try {
@@ -179,6 +265,14 @@ async function main() {
     for (const asset of manifest.assets.filter(a => a.sha256)) {const urls = hashes.get(asset.sha256) || []; urls.push(asset.url); hashes.set(asset.sha256, urls);}
     manifest.identicalImageFiles = [...hashes.entries()].filter(([, urls]) => urls.length > 1).map(([sha256, urls]) => ({sha256, urls, assessment: 'duplicate-bytes; semantic relevance needs review'}));
     manifest.auditComplete = false;
+    const markupComplete = manifest.pages.filter(page => page.included).every(page => page.markup?.response?.saved && page.markup?.rendered?.saved);
+    const linkedSourcesComplete = manifest.sourceFiles.every(file => file.saved);
+    manifest.sourceCaptureComplete = markupComplete && linkedSourcesComplete;
+    manifest.sourceCaptureFailures = [
+      ...manifest.pages.filter(page => page.included && (!page.markup?.response?.saved || !page.markup?.rendered?.saved)).map(page => ({url: page.url, kind: 'markup', reason: 'Original response or rendered DOM was not saved.'})),
+      ...manifest.sourceFiles.filter(file => !file.saved).map(file => ({id: file.id, url: file.url, resourceType: file.resourceType, reason: file.saveLimitation || file.error || 'Resource body was not saved.'}))
+    ];
+    manifest.sourceBytesSaved = sourceBytesSaved;
     manifest.finishedAt = new Date().toISOString();
     writeJson(path.join(output, 'design-code.json'), {status: 'inferred-tokens-need-agent-review', reference: profile.designReference, captures: designRows});
   } finally {await browser.close(); persist();}

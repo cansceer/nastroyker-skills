@@ -29,11 +29,13 @@ test('real browser evidence, width order, raw URLs, fields and read-only boundar
     if (pathname === '/cart/add/') hits.cart++;
     if (pathname === '/autosave') hits.autosave++;
     if (['/large.png', '/large-copy.png'].includes(pathname)) {res.writeHead(200, {'content-type': 'image/png'}); res.end(png); return;}
+    if (pathname === '/site.css') {res.writeHead(200, {'content-type': 'text/css; charset=utf-8'}); res.end('/* linked-css-marker */ body { --fixture-site-css: #123456; }'); return;}
+    if (pathname === '/site.js') {res.writeHead(200, {'content-type': 'application/javascript; charset=utf-8'}); res.end('/* linked-js-marker */ window.fixtureLinkedScript = true;'); return;}
     if (pathname === '/robots.txt') {res.writeHead(200, {'content-type': 'text/plain'}); res.end(''); return;}
     if (pathname === '/sitemap.xml') {res.writeHead(200, {'content-type': 'application/xml'}); res.end(`<urlset><url><loc>${origin}/about/</loc></url></urlset>`); return;}
     const heading = pathname === '/about/' ? '<h1>About</h1><h1>Duplicate</h1>' : pathname === '/' ? '' : '<h1>Product</h1>';
     res.writeHead(200, {'content-type': 'text/html; charset=utf-8'});
-    res.end(`<!doctype html><html lang="ru"><head><title>Fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Fixture description"><style>html,body{margin:0;background:white;color:#111}input{color:#bbb;background:#fff;border:1px solid #ddd}input::placeholder{color:#ccc;opacity:1}input:focus{color:#222}img{width:40px;height:40px}</style></head><body>${heading}<a id="relative" href="/about/">Relative</a><a id="absolute" href="${origin}/about/">Absolute</a><a href="${origin.replace('http:', '')}/about/">Protocol-relative</a><a href="/catalog/product/p1/">Product one</a><a href="/catalog/product/p2/">Product two</a><a href="/catalog/product/p3/">Product three</a><a href="/cart/add/">Mutation</a><img src="/large.png"><img src="/large-copy.png" alt="Decorative"><form action="/subscribe/" method="post"><label for="email">Email</label><input id="email" type="email" placeholder="Email"><button type="submit">Send</button></form><button id="native-submit" onclick="document.forms[0].submit()">Native submit</button><button id="fetch-post" onclick="fetch('/subscribe/',{method:'POST',body:'x'}).catch(()=>{})">POST</button><button id="fetch-get" onclick="fetch('/cart/add/').catch(()=>{})">GET action</button><script>document.querySelector('#email').addEventListener('input',()=>fetch('/autosave?value=x').catch(()=>{}));</script></body></html>`);
+    res.end(`<!doctype html><html lang="ru"><head><title>Fixture</title><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Fixture description"><link rel="stylesheet" href="/site.css"><script src="/site.js" defer></script><style>html,body{margin:0;background:white;color:#111}input{color:#bbb;background:#fff;border:1px solid #ddd}input::placeholder{color:#ccc;opacity:1}input:focus{color:#222}img{width:40px;height:40px}</style></head><body>${heading}<a id="relative" href="/about/">Relative</a><a id="absolute" href="${origin}/about/">Absolute</a><a href="${origin.replace('http:', '')}/about/">Protocol-relative</a><a href="/catalog/product/p1/">Product one</a><a href="/catalog/product/p2/">Product two</a><a href="/catalog/product/p3/">Product three</a><a href="/cart/add/">Mutation</a><img src="/large.png"><img src="/large-copy.png" alt="Decorative"><form action="/subscribe/" method="post"><label for="email">Email</label><input id="email" type="email" placeholder="Email"><button type="submit">Send</button></form><button id="native-submit" onclick="document.forms[0].submit()">Native submit</button><button id="fetch-post" onclick="fetch('/subscribe/',{method:'POST',body:'x'}).catch(()=>{})">POST</button><button id="fetch-get" onclick="fetch('/cart/add/').catch(()=>{})">GET action</button><script>document.querySelector('#email').addEventListener('input',()=>fetch('/autosave?value=x').catch(()=>{}));</script></body></html>`);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
@@ -47,8 +49,19 @@ test('real browser evidence, width order, raw URLs, fields and read-only boundar
   const coverage = JSON.parse(fs.readFileSync(path.join(output, 'coverage.json')));
   const findings = JSON.parse(fs.readFileSync(path.join(output, 'findings.json')));
   assert.equal(manifest.captureComplete, true); assert.equal(manifest.auditComplete, false);
+  assert.equal(manifest.sourceCaptureComplete, true);
   assert.equal(manifest.browser.name, 'Microsoft Edge'); assert.equal(manifest.browser.channel, 'msedge');
   assert.equal(manifest.pages.filter(p => p.included).length, 4);
+  const homePage = manifest.pages.find(p => p.url === origin + '/');
+  assert.ok(homePage.markup.response.saved && homePage.markup.rendered.saved);
+  assert.ok(fs.readFileSync(path.join(output, homePage.markup.response.file), 'utf8').includes('<link rel="stylesheet"'));
+  assert.ok(fs.readFileSync(path.join(output, homePage.markup.rendered.file), 'utf8').includes('Product one'));
+  const cssSource = manifest.sourceFiles.find(source => source.url === origin + '/site.css');
+  const jsSource = manifest.sourceFiles.find(source => source.url === origin + '/site.js');
+  assert.ok(cssSource?.saved && jsSource?.saved);
+  assert.ok(fs.readFileSync(path.join(output, cssSource.file), 'utf8').includes('linked-css-marker'));
+  assert.ok(fs.readFileSync(path.join(output, jsSource.file), 'utf8').includes('linked-js-marker'));
+  assert.ok(homePage.linkedSourceIds.includes(cssSource.id) && homePage.linkedSourceIds.includes(jsSource.id));
   assert.ok(manifest.pages.some(p => p.url.endsWith('/p3/') && !p.included));
   assert.ok(manifest.pages.some(p => p.reason === 'mutation-path'));
   assert.deepEqual(coverage.map(c => c.viewport), [2550,2550,2550,2550,390,390,390,390,767,767,767,767,768,768,768,768]);
