@@ -34,7 +34,9 @@ Canonical, og:url/og:image и URL в JSON-LD оценивать отдельно
 
 ## Доказательства и исполнители
 
-Обязательные поля findings.json: id, priority (P1/P2/P3), owner (user/codex), status (candidate/confirmed/rejected), category, message, recommendation, occurrences [url, viewport, selector, evidence], cmsOrigin, cmsConstraint, verification. Файлы/строки добавлять только если они реально доступны и проверены. Нельзя выдумывать путь к пользовательским стилям по имени FTP-проекта.
+Обязательные поля findings.json: id, priority (P1/P2/P3), owner (user/codex), status (candidate/confirmed/rejected), category, message, recommendation, occurrences [url, viewport, selector, resourceUrl, evidence], cmsOrigin, cmsConstraint, verification. `resourceUrl` обязательно указывай для находки о конкретном файле (например, тяжёлом изображении). `url` каждой страницы остаётся полным URL. Файлы/строки добавлять только если они реально получены с сайта и проверены.
+
+Файл `checklist.md` выдавай с тремя разделами в фиксированном порядке: 1) визуальные ошибки и дизайн; 2) вёрстка, стили и орфография; 3) глобальные проблемы. Внутри сортируй по P1 → P2 → P3. Каждый пункт — отдельный Markdown-чекбокс с исполнителем и кликабельным URL страницы; находки по ресурсу включают прямую ссылку на URL файла. Для отсутствующего meta description перечисляй все затронутые URL, а не только количество или общее описание.
 
 P1: блок основного чтения/действия, серьёзная поломка навигации/адаптива. P2: заметная ошибка оформления/контента/доступности/скорости. P3: небольшая ошибка, техническая гигиена, рекомендация. Субъективное улучшение помечать рекомендацией. Protected CMS не снижает приоритет поломки.
 

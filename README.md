@@ -7,7 +7,7 @@
 | Плагин | Назначение |
 |---|---|
 | `social-banner-kit` | Создание и адаптация баннеров для соцсетей. |
-| `stroykerbox-site-audit` | Аудит сайтов на StroykerBox в Microsoft Edge. Выдаёт два чеклиста и не вносит изменения на сайт. |
+| `stroykerbox-site-audit` | Аудит сайтов на StroykerBox в Microsoft Edge. Создаёт чеклист задач с прямыми ссылками и не вносит изменения на сайт. |
 
 ## Установка в Codex Desktop
 

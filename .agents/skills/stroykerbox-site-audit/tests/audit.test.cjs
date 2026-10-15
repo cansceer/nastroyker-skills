@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
-const {report} = require('../scripts/render-report.cjs');
+const {report, coverageSummary} = require('../scripts/render-report.cjs');
 const {installReadOnlyGuard, launchBrowser} = require('../scripts/lib.cjs');
 const root = path.resolve(__dirname, '..');
 
@@ -109,10 +109,36 @@ test('real browser evidence, width order, raw URLs, fields and read-only boundar
   assert.equal(resumedManifest.captureComplete, true); assert.equal(resumedManifest.auditComplete, false);
 });
 
-test('report exposes confirmed findings only, in two worklists', () => {
+test('checklist groups by requested order and links exact affected pages and resources', () => {
   const occurrence = {url: 'https://example.invalid/about/', viewport: 390, evidence: 'screenshots/test.png'};
-  const findings = [{id: 'U-confirmed', owner: 'user', status: 'confirmed', priority: 'P2', category: 'content', message: 'Confirmed typo', recommendation: 'Fix text in CMS', occurrences: [occurrence]}, {id: 'A-candidate', owner: 'codex', status: 'candidate', priority: 'P1', category: 'layout', message: 'Unverified overflow', recommendation: 'Review it', occurrences: [occurrence]}];
+  const findings = [
+    {id: 'U-image', owner: 'user', status: 'confirmed', priority: 'P2', category: 'images', message: 'Image exceeds the size limit', recommendation: 'Optimize this image', occurrences: [{...occurrence, resourceUrl: 'https://cdn.example.invalid/heavy.webp'}]},
+    {id: 'U-visual-p3', owner: 'user', status: 'confirmed', priority: 'P3', category: 'design', message: 'Minor color mismatch', recommendation: 'Review the token', occurrences: [occurrence]},
+    {id: 'U-typo', owner: 'user', status: 'confirmed', priority: 'P3', category: 'content', message: 'Confirmed typo', recommendation: 'Fix text in CMS', occurrences: [occurrence]},
+    {id: 'U-description', owner: 'user', status: 'confirmed', priority: 'P2', category: 'metadata', message: 'Missing meta description', recommendation: 'Fill description', occurrences: [{...occurrence, url: 'https://example.invalid/contacts/'}]},
+    {id: 'A-layout', owner: 'codex', status: 'confirmed', priority: 'P1', category: 'layout', message: 'Confirmed overflow', recommendation: 'Fix width', occurrences: [occurrence]},
+    {id: 'A-candidate', owner: 'codex', status: 'candidate', priority: 'P1', category: 'layout', message: 'Unverified overflow', recommendation: 'Review it', occurrences: [occurrence]}
+  ];
   const output = report(findings);
-  assert.ok(output.includes('U-confirmed')); assert.ok(!output.includes('Unverified overflow'));
+  assert.ok(output.includes('U-image')); assert.ok(!output.includes('Unverified overflow'));
   assert.ok(output.includes('Для вас')); assert.ok(output.includes('Для Codex'));
+  assert.ok(output.includes('[https://cdn.example.invalid/heavy.webp](<https://cdn.example.invalid/heavy.webp>)'));
+  assert.ok(output.includes('[https://example.invalid/contacts/](<https://example.invalid/contacts/>)'));
+  assert.ok(output.indexOf('1. Визуальные ошибки и дизайн') < output.indexOf('2. Вёрстка, стили и орфография'));
+  assert.ok(output.indexOf('2. Вёрстка, стили и орфография') < output.indexOf('3. Глобальные проблемы'));
+  assert.ok(output.indexOf('U-image') < output.indexOf('U-visual-p3'));
+  assert.equal(output.match(/A-layout/g).length, 1);
+});
+
+test('checklist summary derives page, viewport, browser and source coverage from audit files', () => {
+  const summary = coverageSummary({pages: [{url: 'https://example.invalid/', included: true}, {url: 'https://example.invalid/about/', included: true}], browser: {name: 'Microsoft Edge', version: '155'}, sourceCaptureComplete: false, sourceCaptureFailures: [{url: 'https://example.invalid/about/'}], limitations: [{}]}, [
+    {url: 'https://example.invalid/', viewport: 390, capture: 'passed'},
+    {url: 'https://example.invalid/', viewport: 768, capture: 'passed'},
+    {url: 'https://example.invalid/about/', viewport: 390, capture: 'passed'},
+    {url: 'https://example.invalid/about/', viewport: 768, capture: 'blocked'}
+  ]);
+  assert.ok(summary.includes('1/2 страниц'));
+  assert.ok(summary.includes('390, 768 px'));
+  assert.ok(summary.includes('Microsoft Edge 155'));
+  assert.ok(summary.includes('сбор HTML/CSS/JS неполон; пропусков: 1'));
 });

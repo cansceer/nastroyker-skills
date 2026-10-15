@@ -1,6 +1,6 @@
 {
   "name": "stroykerbox-site-audit",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Read-only evidence collector for an agent-driven StroykerBox site audit",
   "engines": {"node": ">=22"},
