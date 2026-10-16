@@ -36,6 +36,18 @@ def hits_circle(box, circle):
     return (nearest_x - circle["cx"]) ** 2 + (nearest_y - circle["cy"]) ** 2 <= radius ** 2
 
 
+def touches_edges(box, canvas, edges, tolerance=2):
+    x, y, w, h = box
+    cw, ch = canvas
+    checks = {
+        "left": x <= tolerance,
+        "top": y <= tolerance,
+        "right": x + w >= cw - tolerance,
+        "bottom": y + h >= ch - tolerance,
+    }
+    return [edge for edge in edges if edge in checks and not checks[edge]]
+
+
 def web_source(value):
     if not isinstance(value, str):
         return False
@@ -140,12 +152,63 @@ def validate(manifest, base, profiles, geometry_only=False):
             if not rectangle(bbox):
                 errors.append(f"{prefix}: bbox must contain finite x,y,positive width,height")
                 continue
-            if role not in DECORATIVE:
+            crop = element.get("crop")
+            if crop is None and role not in DECORATIVE:
                 if not inside(bbox, safe, profile.get("padding", 0)):
                     errors.append(f"{prefix}: outside safe content area including padding")
                 for exclusion in profile.get("exclusions", []):
                     if exclusion["type"] == "circle" and hits_circle(bbox, exclusion):
                         errors.append(f"{prefix}: intersects avatar exclusion including clearance")
+            elif crop is not None:
+                if role not in {"character", "product", "key_visual"}:
+                    errors.append(f"{prefix}: intentional crop is only allowed for character, product or key_visual")
+                canvas_rect = [0, 0, canvas[0], canvas[1]]
+                if not inside(bbox, canvas_rect):
+                    errors.append(f"{prefix}: cropped visible bbox must stay inside the canvas")
+                if not isinstance(crop, dict):
+                    errors.append(f"{prefix}: crop must be an object")
+                    crop = {}
+                edges = crop.get("edges")
+                if (not isinstance(edges, list) or not edges
+                        or any(not isinstance(edge, str)
+                               or edge not in {"top", "right", "bottom", "left"}
+                               for edge in edges)):
+                    errors.append(f"{prefix}: crop.edges must list one or more canvas edges")
+                    edges = []
+                elif touches_edges(bbox, canvas, edges):
+                    errors.append(f"{prefix}: cropped bbox does not touch declared edge(s) {touches_edges(bbox, canvas, edges)}")
+                if not isinstance(crop.get("rationale"), str) or not crop["rationale"].strip():
+                    errors.append(f"{prefix}: intentional crop needs a short rationale")
+                protected = crop.get("protected_parts")
+                if not isinstance(protected, list) or not protected:
+                    errors.append(f"{prefix}: intentional crop needs protected_parts with visible-content bboxes")
+                    protected = []
+                protected_ids = set()
+                for part_index, part in enumerate(protected, 1):
+                    part_label = f"{prefix}: protected part {part_index}"
+                    if not isinstance(part, dict):
+                        errors.append(f"{part_label}: must be an object")
+                        continue
+                    part_id, part_box = part.get("id"), part.get("bbox")
+                    if not isinstance(part_id, str) or not part_id or part_id in protected_ids:
+                        errors.append(f"{part_label}: missing/duplicate id")
+                    else:
+                        protected_ids.add(part_id)
+                        part_label = f"{prefix}: protected {part_id}"
+                    if not rectangle(part_box):
+                        errors.append(f"{part_label}: bbox must contain finite x,y,positive width,height")
+                        continue
+                    if not inside(part_box, bbox):
+                        errors.append(f"{part_label}: protected bbox must be within its visible parent bbox")
+                    if not inside(part_box, safe, profile.get("padding", 0)):
+                        errors.append(f"{part_label}: outside safe content area including padding")
+                    for exclusion in profile.get("exclusions", []):
+                        if exclusion["type"] == "circle" and hits_circle(part_box, exclusion):
+                            errors.append(f"{part_label}: intersects avatar exclusion including clearance")
+                if role == "character" and not ({"face", "head"} & protected_ids):
+                    errors.append(f"{prefix}: cropped character must protect a face or head")
+                if role == "product" and not ({"product_identity", "label"} & protected_ids):
+                    errors.append(f"{prefix}: cropped product must protect its identifying area")
             if role == "logo":
                 has_logo = True
                 if not web_source(element.get("asset_source_url")):
@@ -193,7 +256,8 @@ def validate(manifest, base, profiles, geometry_only=False):
 def compare_locked_geometry(manifest, baseline):
     """Require identical element identities and positions for a composition-locked edit."""
     def positions(document):
-        return {(output["kit"], output["platform"], element["id"]): element["bbox"]
+        return {(output["kit"], output["platform"], element["id"]):
+                {"bbox": element["bbox"], "crop": element.get("crop")}
                 for output in document["outputs"] for element in output["elements"]}
     before, after = positions(baseline), positions(manifest)
     errors = []
@@ -232,7 +296,6 @@ def main():
     stage = "GEOMETRY ONLY — export still required" if args.geometry_only else "FINAL FILES"
     print(f"PASS ({stage}): {manifest['kits']} kit(s), {len(manifest['outputs'])} adaptation(s)")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
