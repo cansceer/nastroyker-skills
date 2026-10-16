@@ -55,6 +55,11 @@ def web_source(value):
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+def nonempty_file(base, value):
+    return (isinstance(value, str) and bool(value)
+            and (base / value).is_file() and (base / value).stat().st_size > 0)
+
+
 def validate(manifest, base, profiles, geometry_only=False):
     errors = []
     if not isinstance(manifest, dict):
@@ -97,6 +102,8 @@ def validate(manifest, base, profiles, geometry_only=False):
         if profile.get("platform", profile_name) != platform:
             errors.append(f"{label}: profile belongs to another platform")
         canvas, safe = profile["canvas"], profile["safe_rect"]
+        if "canvas" in output and output["canvas"] != canvas:
+            errors.append(f"{label}: declared canvas differs from its profile")
         filename = output.get("file")
         if not isinstance(filename, str) or not filename:
             errors.append(f"{label}: missing final filename")
@@ -119,12 +126,12 @@ def validate(manifest, base, profiles, geometry_only=False):
             if not family:
                 errors.append(f"{label}: empty font family")
             families.add(family)
-            if not web_source(font.get("source_url")):
-                errors.append(f"{label}: font {family} lacks website source")
             font_file = font.get("file")
-            if (not geometry_only and (not isinstance(font_file, str)
-                    or not (base / font_file).is_file()
-                    or (base / font_file).stat().st_size == 0)):
+            local_font_source = (font.get("source_kind") in {"user_supplied", "brand_asset"}
+                                 and nonempty_file(base, font_file))
+            if not web_source(font.get("source_url")) and not local_font_source:
+                errors.append(f"{label}: font {family} lacks website or documented local source")
+            if not geometry_only and not nonempty_file(base, font_file):
                 errors.append(f"{label}: font {family} file missing/empty")
         if len(families) > 2:
             errors.append(f"{label}: more than two font families")
@@ -153,35 +160,39 @@ def validate(manifest, base, profiles, geometry_only=False):
                 errors.append(f"{prefix}: bbox must contain finite x,y,positive width,height")
                 continue
             crop = element.get("crop")
-            if crop is None and role not in DECORATIVE:
+            framing = element.get("framing")
+            protection = crop if crop is not None else framing
+            if crop is not None and framing is not None:
+                errors.append(f"{prefix}: use crop or framing, not both")
+            if protection is None and role not in DECORATIVE:
                 if not inside(bbox, safe, profile.get("padding", 0)):
                     errors.append(f"{prefix}: outside safe content area including padding")
                 for exclusion in profile.get("exclusions", []):
                     if exclusion["type"] == "circle" and hits_circle(bbox, exclusion):
                         errors.append(f"{prefix}: intersects avatar exclusion including clearance")
-            elif crop is not None:
+            elif protection is not None:
                 if role not in {"character", "product", "key_visual"}:
-                    errors.append(f"{prefix}: intentional crop is only allowed for character, product or key_visual")
+                    errors.append(f"{prefix}: crop/framing is only allowed for character, product or key_visual")
                 canvas_rect = [0, 0, canvas[0], canvas[1]]
                 if not inside(bbox, canvas_rect):
-                    errors.append(f"{prefix}: cropped visible bbox must stay inside the canvas")
-                if not isinstance(crop, dict):
-                    errors.append(f"{prefix}: crop must be an object")
-                    crop = {}
-                edges = crop.get("edges")
-                if (not isinstance(edges, list) or not edges
-                        or any(not isinstance(edge, str)
-                               or edge not in {"top", "right", "bottom", "left"}
-                               for edge in edges)):
-                    errors.append(f"{prefix}: crop.edges must list one or more canvas edges")
-                    edges = []
-                elif touches_edges(bbox, canvas, edges):
-                    errors.append(f"{prefix}: cropped bbox does not touch declared edge(s) {touches_edges(bbox, canvas, edges)}")
-                if not isinstance(crop.get("rationale"), str) or not crop["rationale"].strip():
-                    errors.append(f"{prefix}: intentional crop needs a short rationale")
-                protected = crop.get("protected_parts")
+                    errors.append(f"{prefix}: visible bbox must stay inside the canvas")
+                if not isinstance(protection, dict):
+                    errors.append(f"{prefix}: crop/framing must be an object")
+                    protection = {}
+                if crop is not None:
+                    edges = protection.get("edges")
+                    if (not isinstance(edges, list) or not edges
+                            or any(not isinstance(edge, str)
+                                   or edge not in {"top", "right", "bottom", "left"}
+                                   for edge in edges)):
+                        errors.append(f"{prefix}: crop.edges must list one or more canvas edges")
+                    elif touches_edges(bbox, canvas, edges):
+                        errors.append(f"{prefix}: cropped bbox does not touch declared edge(s) {touches_edges(bbox, canvas, edges)}")
+                if not isinstance(protection.get("rationale"), str) or not protection["rationale"].strip():
+                    errors.append(f"{prefix}: crop/framing needs a short rationale")
+                protected = protection.get("protected_parts")
                 if not isinstance(protected, list) or not protected:
-                    errors.append(f"{prefix}: intentional crop needs protected_parts with visible-content bboxes")
+                    errors.append(f"{prefix}: crop/framing needs protected_parts with visible-content bboxes")
                     protected = []
                 protected_ids = set()
                 for part_index, part in enumerate(protected, 1):
@@ -206,14 +217,19 @@ def validate(manifest, base, profiles, geometry_only=False):
                         if exclusion["type"] == "circle" and hits_circle(part_box, exclusion):
                             errors.append(f"{part_label}: intersects avatar exclusion including clearance")
                 if role == "character" and not ({"face", "head"} & protected_ids):
-                    errors.append(f"{prefix}: cropped character must protect a face or head")
+                    errors.append(f"{prefix}: character crop/framing must protect a face or head")
                 if role == "product" and not ({"product_identity", "label"} & protected_ids):
-                    errors.append(f"{prefix}: cropped product must protect its identifying area")
+                    errors.append(f"{prefix}: product crop/framing must protect its identifying area")
             if role == "logo":
                 has_logo = True
-                if not web_source(element.get("asset_source_url")):
-                    errors.append(f"{prefix}: original logo lacks website source")
+                local_logo_source = (
+                    element.get("asset_source_kind") in {"user_supplied", "brand_asset"}
+                    and nonempty_file(base, element.get("asset_source_file")))
+                if not web_source(element.get("asset_source_url")) and not local_logo_source:
+                    errors.append(f"{prefix}: original logo lacks website or documented local source")
             if "text" in element:
+                if crop is not None or framing is not None:
+                    errors.append(f"{prefix}: typeset text cannot declare crop or framing")
                 if not isinstance(element["text"], str) or not element["text"].strip():
                     errors.append(f"{prefix}: empty/invalid text")
                 if role in DECORATIVE:
@@ -226,7 +242,7 @@ def validate(manifest, base, profiles, geometry_only=False):
                 if element.get("font_family") not in families:
                     errors.append(f"{prefix}: font family has no sourced font record")
         if not has_logo:
-            errors.append(f"{label}: missing original website logo")
+            errors.append(f"{label}: missing original brand logo")
         if len(sizes) > 3:
             errors.append(f"{label}: more than three typeset font sizes")
         if not geometry_only and filepath is not None:
@@ -244,6 +260,8 @@ def validate(manifest, base, profiles, geometry_only=False):
                         if image.format not in profile["formats"]:
                             errors.append(f"{label}: unsupported file format {image.format}")
                         image.verify()
+                    with Image.open(filepath) as image:
+                        image.load()
                 except ImportError:
                     errors.append("Pillow is required for final image verification")
                 except Exception as error:
@@ -255,17 +273,39 @@ def validate(manifest, base, profiles, geometry_only=False):
 
 def compare_locked_geometry(manifest, baseline):
     """Require identical element identities and positions for a composition-locked edit."""
+    def crop_geometry(crop):
+        if crop is None:
+            return None
+        return {"edges": sorted(crop.get("edges", [])),
+                "protected_parts": {part["id"]: part["bbox"]
+                                    for part in crop["protected_parts"]}}
+
     def positions(document):
         return {(output["kit"], output["platform"], element["id"]):
-                {"bbox": element["bbox"], "crop": element.get("crop")}
+                {"bbox": element["bbox"], "role": element["role"],
+                 "crop": crop_geometry(element.get("crop")),
+                 "framing": crop_geometry(element.get("framing"))}
                 for output in document["outputs"] for element in output["elements"]}
-    before, after = positions(baseline), positions(manifest)
+
+    def output_frames(document):
+        return {(output["kit"], output["platform"]):
+                {"profile": output.get("profile", output["platform"]),
+                 "canvas": output.get("canvas")}
+                for output in document["outputs"]}
+
+    try:
+        before, after = positions(baseline), positions(manifest)
+        before_frames, after_frames = output_frames(baseline), output_frames(manifest)
+    except (KeyError, TypeError, AttributeError):
+        return ["locked composition: malformed baseline or manifest"]
     errors = []
+    if before_frames != after_frames:
+        errors.append("locked composition: output profile/canvas changed")
     for identity in sorted(set(before) | set(after)):
         if identity not in before or identity not in after:
             errors.append(f"locked composition: element added/removed {identity}")
         elif before[identity] != after[identity]:
-            errors.append(f"locked composition: position/size changed {identity}")
+            errors.append(f"locked composition: geometry/role changed {identity}")
     return errors
 
 
@@ -283,7 +323,7 @@ def main():
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         profiles = json.loads(args.profiles.read_text(encoding="utf-8"))["profiles"]
         errors = validate(manifest, args.manifest.resolve().parent, profiles, args.geometry_only)
-        if args.baseline:
+        if args.baseline and not errors:
             baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
             errors.extend(compare_locked_geometry(manifest, baseline))
     except (OSError, ValueError, KeyError, TypeError) as error:
